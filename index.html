@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulador de Smartwatch</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500&family=Instrument+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout: palco claro em tela cheia com o relógio 3D ao centro; uma única barra flutuante de controles embaixo. */
+:root{
+  color-scheme: light;
+  --stage:#e9eaea;
+  --stage-lit:#ffffff;
+  --bar:rgba(255,255,255,.86);
+  --line:#dcddde;
+  --ink:#1c1d1f;
+  --ink-soft:#8b8d91;
+  --font-display:"Bricolage Grotesque","Avenir Next","Segoe UI",system-ui,sans-serif;
+  --font-body:"Instrument Sans","Segoe UI",system-ui,-apple-system,sans-serif;
+  --crown-shift:0px;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--stage);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.4}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+
+/* ---------- Palco ---------- */
+.stage{
+  position:relative;height:100%;min-height:560px;overflow:hidden;
+  background:radial-gradient(ellipse 65% 60% at 50% 42%,var(--stage-lit),var(--stage) 80%);
+  perspective:1500px;display:flex;align-items:center;justify-content:center;padding-bottom:90px;
+  cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;
+}
+.stage.dragging{cursor:grabbing}
+.stage.dragging iframe{pointer-events:none}
+.floor{position:absolute;left:50%;bottom:118px;width:320px;height:36px;transform:translateX(-50%);
+  background:radial-gradient(ellipse at center,rgba(0,0,0,.2),transparent 70%);filter:blur(8px);pointer-events:none}
+.rig,.orbit,.float,.watch{transform-style:preserve-3d}
+.orbit{transform:rotateX(8deg) rotateY(-24deg)}
+.float{animation:bob 8s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateY(-5px) rotateZ(-.4deg)}50%{transform:translateY(5px) rotateZ(.4deg)}}
+@media (prefers-reduced-motion:reduce){.float{animation:none}}
+
+/* formas */
+.watch{position:relative;width:var(--w);height:var(--h);
+  --w:312px;--h:380px;--r:74px;--sr:61px;--strap-in:30px;--crown-top:92px;--pad:34px 22px 44px}
+.watch.round{--w:344px;--h:344px;--r:50%;--sr:50%;--strap-in:58px;--crown-top:141px;--pad:58px 46px 70px}
+
+/* corpo: camadas empilhadas dão a espessura */
+.layer{position:absolute;inset:0;border-radius:var(--r);
+  background:linear-gradient(90deg,#aeb0b3,#f6f7f8 18%,#dedfe1 55%,#a3a5a8)}
+.bezel{position:absolute;inset:0;border-radius:var(--r);background:#08090a;transform:translateZ(1px);
+  box-shadow:inset 0 0 0 5px #eeeff0,inset 0 0 0 6px #b4b6b9,inset 0 0 0 7px #000}
+.back{position:absolute;inset:0;border-radius:var(--r);background:#c9cacc;transform:translateZ(-33px)}
+
+/* pulseira */
+.strap,.seg{position:absolute;left:0;width:100%;height:84px;transform-style:preserve-3d;
+  background:linear-gradient(90deg,#cfd0d2,#f5f5f5 12%,#eaeaeb 50%,#f5f5f5 88%,#c9cacc)}
+.strap{left:calc((var(--w) - 236px)/2);width:236px}
+.strap.top{bottom:calc(100% - var(--strap-in));transform-origin:50% 100%;transform:translateZ(-17px) rotateX(9deg);border-radius:10px 10px 0 0}
+.strap.top .seg{bottom:calc(100% - 1px);transform-origin:50% 100%;transform:rotateX(17deg)}
+.strap.bottom{top:calc(100% - var(--strap-in));transform-origin:50% 0;transform:translateZ(-17px) rotateX(-9deg);border-radius:0 0 10px 10px}
+.strap.bottom .seg{top:calc(100% - 1px);transform-origin:50% 0;transform:rotateX(-17deg);
+  background-image:radial-gradient(circle,#b9babd 0 5px,transparent 6px),linear-gradient(90deg,#cfd0d2,#f5f5f5 12%,#eaeaeb 50%,#f5f5f5 88%,#c9cacc);
+  background-size:100% 42px,100% 100%}
+
+/* coroa e botão lateral */
+.crown-layer{position:absolute;right:-18px;top:var(--crown-top);width:22px;height:62px;border-radius:5px 7px 7px 5px;
+  background:
+    linear-gradient(180deg,rgba(0,0,0,.28),transparent 28%,transparent 72%,rgba(0,0,0,.32)),
+    repeating-linear-gradient(180deg,#fafafa 0 2px,#a2a4a7 2px 6px);
+  background-position:0 0,0 var(--crown-shift)}
+.btn-layer{position:absolute;right:-7px;top:196px;width:10px;height:74px;border-radius:3px 5px 5px 3px;
+  background:linear-gradient(180deg,#b3b5b8,#f1f2f3 30%,#b3b5b8)}
+.hit{position:absolute;border:0;padding:0;background:transparent;transform:translateZ(2px);border-radius:10px}
+#crown{right:-30px;top:calc(var(--crown-top) - 14px);width:44px;height:90px;cursor:ns-resize;touch-action:none}
+#sideBtn{right:-20px;top:188px;width:30px;height:90px;cursor:pointer}
+.watch.round .btn-layer,.watch.round #sideBtn{display:none}
+
+/* tela */
+.screen{position:absolute;inset:14px;border-radius:var(--sr);overflow:hidden;background:#000;transform:translateZ(2px);cursor:auto;color:#f2f2f3}
+.scroller{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;scrollbar-width:none;overscroll-behavior:contain;touch-action:pan-y}
+.scroller::-webkit-scrollbar{display:none}
+.glass{position:absolute;inset:0;pointer-events:none;border-radius:inherit;
+  background:linear-gradient(125deg,rgba(255,255,255,.12),transparent 32%,transparent 70%,rgba(255,255,255,.04));
+  box-shadow:inset 0 0 18px rgba(0,0,0,.8)}
+.indicator{position:absolute;right:7px;top:calc(var(--crown-top) - 14px);width:4px;height:64px;border-radius:2px;background:rgba(255,255,255,.2);
+  opacity:0;transition:opacity .35s;pointer-events:none}
+.watch.round .indicator{right:14px}
+.indicator.on{opacity:1}
+.indicator i{position:absolute;left:0;width:100%;height:22px;border-radius:2px;background:#fff}
+
+/* tela inicial do relógio */
+.home{padding:var(--pad);display:flex;flex-direction:column;gap:12px}
+.watch.round .home{text-align:center}
+.clock{font-family:var(--font-display);font-weight:400;font-size:76px;line-height:.9;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.watch.round .clock{font-size:66px}
+.clock b{color:#77797d;font-weight:400}
+.date{color:#9a9ca0;font-size:15px;text-transform:capitalize}
+.watch.round .date{font-size:13px;white-space:nowrap}
+.secs{height:2px;border-radius:1px;background:#26272a;overflow:hidden;margin-bottom:10px}
+.secs i{display:block;height:100%;background:#f2f2f3;width:0}
+.tiles{display:flex;flex-direction:column;gap:8px}
+.tile{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;border-radius:22px;background:#17181a;padding:11px 14px;cursor:pointer;color:inherit}
+.tile:hover{background:#222326}
+.tile span{flex:none;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;font-family:var(--font-display);font-weight:500;color:#111;background:#ececed}
+.tile strong{font-weight:500;font-size:15px;overflow-wrap:anywhere}
+
+.site{display:none;position:relative;overflow:hidden;background:#fff}
+.site iframe{display:block;border:0;transform-origin:0 0;background:#fff}
+.loading{position:absolute;inset:0;display:none;place-items:center;background:#000}
+.loading.on{display:grid}
+.spin{width:30px;height:30px;border-radius:50%;border:2px solid #2a2b2e;border-top-color:#fff;animation:spin .9s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* ---------- Barra de controles ---------- */
+.bar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:5;cursor:auto;touch-action:auto;
+  display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:8px;
+  width:max-content;max-width:calc(100% - 32px);padding:8px;border-radius:20px;
+  background:var(--bar);border:1px solid var(--line);
+  -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);
+  box-shadow:0 10px 30px rgba(20,22,26,.08)}
+.bar form{display:flex;gap:6px;flex:1 1 280px;min-width:0}
+.field{-webkit-user-select:text;user-select:text;flex:1;min-width:0;width:260px;background:#f3f3f4;border:1px solid transparent;border-radius:12px;padding:9px 12px}
+.field::placeholder{color:var(--ink-soft)}
+.field.err{border-color:#c9483a}
+.go{flex:none;border:0;border-radius:12px;padding:9px 16px;background:var(--ink);color:#fff;font-weight:500;cursor:pointer}
+.go:hover{background:#000}
+.seg-ctl{display:flex;padding:3px;border-radius:12px;background:#f3f3f4}
+.seg-ctl button,.step button{border:0;background:transparent;border-radius:9px;padding:6px 12px;cursor:pointer;color:var(--ink-soft)}
+.seg-ctl button[aria-pressed="true"]{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(20,22,26,.12)}
+.step{display:flex;align-items:center;padding:3px;border-radius:12px;background:#f3f3f4}
+.step button{color:var(--ink);padding:6px 11px}
+.step button:hover:not(:disabled){background:#fff}
+.step button:disabled{color:#c4c5c8;cursor:default}
+.step output{min-width:58px;text-align:center;font-size:14px;color:var(--ink-soft);font-variant-numeric:tabular-nums}
+.notice{flex:1 0 100%;margin:2px 6px;font-size:13px;color:var(--ink-soft);text-align:center}
+.notice[hidden]{display:none}
+.msg{position:absolute;inset:0;display:none;place-items:center;background:#000;color:#b9bbbf;font-size:14px;text-align:center;padding:44px}
+.msg.on{display:grid}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+</style>
+</head>
+<body>
+
+<main class="stage" id="stage">
+  <div class="floor"></div>
+  <div class="rig" id="rig">
+    <div class="orbit" id="orbit">
+      <div class="float">
+        <div class="watch" id="watch">
+          <div class="strap top"><div class="seg"><div class="seg"><div class="seg"></div></div></div></div>
+          <div class="strap bottom"><div class="seg"><div class="seg"><div class="seg"></div></div></div></div>
+          <div class="back"></div>
+          <!-- camadas do corpo, coroa e botão entram por script -->
+          <div class="bezel"></div>
+          <div class="screen" id="screen">
+            <div class="scroller" id="scroller">
+              <div class="home" id="home">
+                <div class="clock" id="clock">00<b>:</b>00</div>
+                <div class="date" id="date"></div>
+                <div class="secs"><i id="secs"></i></div>
+                <div class="tiles" id="tiles"></div>
+              </div>
+              <div class="site" id="site">
+                <iframe id="frame" title="Site exibido no relógio" referrerpolicy="no-referrer"
+                  sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+              </div>
+            </div>
+            <div class="loading" id="loading"><div class="spin"></div></div>
+            <div class="msg" id="msg"></div>
+            <div class="indicator" id="indicator"><i id="thumb"></i></div>
+            <div class="glass"></div>
+          </div>
+          <button class="hit" id="crown" type="button" title="Gire para rolar · clique para voltar ao início" aria-label="Coroa: gire para rolar a tela, clique para voltar ao início"></button>
+          <button class="hit" id="sideBtn" type="button" title="Recarregar" aria-label="Botão lateral: recarregar o site"></button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+  <div class="bar" id="bar">
+    <p class="notice" id="notice" hidden></p>
+    <form id="form">
+      <label class="sr" for="url">Link do site</label>
+      <input class="field" id="url" type="text" inputmode="url" autocomplete="off" spellcheck="false" placeholder="Cole um link">
+      <button class="go" type="submit">Abrir</button>
+    </form>
+    <div class="seg-ctl" role="group" aria-label="Formato do relógio">
+      <button type="button" id="shapeSquare" aria-pressed="true">Quadrado</button>
+      <button type="button" id="shapeRound" aria-pressed="false">Redondo</button>
+    </div>
+    <div class="step" role="group" aria-label="Zoom do site">
+      <button type="button" id="wider" title="Diminuir zoom" aria-label="Diminuir zoom">−</button>
+      <output id="zoomOut">100%</output>
+      <button type="button" id="narrower" title="Aumentar zoom" aria-label="Aumentar zoom">+</button>
+    </div>
+  </div>
+
+<script>
+(function(){
+  var FRAME_H = 5000;
+  var WIDTHS = [284, 320, 360, 414, 520, 768];
+  var SHORTCUTS = [
+    {name:'Wikipédia', url:'https://pt.m.wikipedia.org/wiki/Smartwatch'},
+    {name:'Wikcionário', url:'https://pt.m.wiktionary.org/wiki/relógio'},
+    {name:'Mapa', url:'https://www.openstreetmap.org/export/embed.html?bbox=-74,-34,-34,6&layer=mapnik'},
+    {name:'Example', url:'https://example.com'}
+  ];
+  var $ = function(id){return document.getElementById(id)};
+  var stage=$('stage'), rig=$('rig'), orbit=$('orbit'), watch=$('watch'), screenEl=$('screen'), scroller=$('scroller'),
+      home=$('home'), site=$('site'), frame=$('frame'), loading=$('loading'),
+      indicator=$('indicator'), thumb=$('thumb'), crown=$('crown'), urlInput=$('url');
+
+  /* ----- corpo 3D: camadas ----- */
+  function stack(cls, from, to, step){
+    var bezel = watch.querySelector('.bezel');
+    for(var z=from; z>=to; z-=step){
+      var d=document.createElement('div'); d.className=cls; d.style.transform='translateZ('+z+'px)';
+      watch.insertBefore(d, bezel);
+    }
+  }
+  stack('layer', 0, -32, 2);
+  stack('crown-layer', -5, -27, 2);
+  stack('btn-layer', -9, -23, 2);
+
+  /* ----- escala do relógio ao palco ----- */
+  function fit(){
+    var s = Math.min(1.2, (stage.clientHeight-150)/700, (stage.clientWidth-40)/440);
+    rig.style.transform = 'scale('+Math.max(.45,s).toFixed(3)+')';
+  }
+  window.addEventListener('resize', fit); fit();
+
+  /* ----- girar o relógio arrastando o fundo (duplo clique centraliza) ----- */
+  var rx=8, ry=-24, drag=null;
+  function pose(){ orbit.style.transform='rotateX('+rx.toFixed(1)+'deg) rotateY('+ry.toFixed(1)+'deg)'; }
+  stage.addEventListener('pointerdown', function(e){
+    if(e.target.closest('.screen, .hit, .bar')) return;
+    drag={x:e.clientX,y:e.clientY,rx:rx,ry:ry}; stage.classList.add('dragging');
+    try{stage.setPointerCapture(e.pointerId)}catch(_){}
+  });
+  stage.addEventListener('pointermove', function(e){
+    if(!drag) return;
+    ry = Math.max(-70, Math.min(70, drag.ry + (e.clientX-drag.x)*.35));
+    rx = Math.max(-40, Math.min(40, drag.rx - (e.clientY-drag.y)*.3));
+    pose();
+  });
+  function endDrag(){ drag=null; stage.classList.remove('dragging'); }
+  stage.addEventListener('pointerup', endDrag); stage.addEventListener('pointercancel', endDrag);
+  stage.addEventListener('dblclick', function(e){ if(e.target.closest('.screen, .hit, .bar')) return; rx=8; ry=-24; pose(); });
+
+  /* ----- rolagem: coroa e tela compartilham o mesmo scrollTop ----- */
+  var target=0, animating=false, hideTimer=0;
+  function maxScroll(){ return Math.max(0, scroller.scrollHeight - scroller.clientHeight); }
+  function tick(){
+    var diff = target - scroller.scrollTop;
+    if(Math.abs(diff) < .6){ scroller.scrollTop = target; animating=false; return; }
+    scroller.scrollTop += diff*.28;
+    requestAnimationFrame(tick);
+  }
+  function rotate(px){
+    if(!animating) target = scroller.scrollTop;
+    target = Math.max(0, Math.min(maxScroll(), target + px));
+    if(!animating){ animating=true; requestAnimationFrame(tick); }
+  }
+  function resetScroll(){ animating=false; scroller.scrollTop=0; target=0; }
+  scroller.addEventListener('scroll', function(){
+    var top = scroller.scrollTop, max = maxScroll();
+    document.documentElement.style.setProperty('--crown-shift', (-top*.5).toFixed(1)+'px');
+    thumb.style.top = (max ? top/max*(64-22) : 0) + 'px';
+    indicator.classList.add('on'); clearTimeout(hideTimer);
+    hideTimer = setTimeout(function(){indicator.classList.remove('on')}, 900);
+  });
+
+  // coroa: arrastar, rodinha, teclado, clique
+  var cd=null;
+  crown.addEventListener('pointerdown', function(e){
+    cd={y:e.clientY, moved:0}; try{crown.setPointerCapture(e.pointerId)}catch(_){}
+    stage.classList.add('dragging');
+  });
+  crown.addEventListener('pointermove', function(e){
+    if(!cd) return; var dy=e.clientY-cd.y; cd.y=e.clientY; cd.moved+=Math.abs(dy); rotate(dy*2.2);
+  });
+  crown.addEventListener('pointerup', function(){
+    if(!cd) return; var wasClick = cd.moved < 4; cd=null; stage.classList.remove('dragging'); if(wasClick) goHome();
+  });
+  crown.addEventListener('pointercancel', function(){cd=null; stage.classList.remove('dragging')});
+  crown.addEventListener('keydown', function(e){ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); goHome(); } });
+  stage.addEventListener('wheel', function(e){
+    if(e.target.closest('.screen, .bar')) return;      // sobre a tela, a rolagem é nativa
+    e.preventDefault(); rotate(e.deltaY*(e.deltaMode===1?24:.9));
+  }, {passive:false});
+  document.addEventListener('keydown', function(e){
+    if(e.target.closest('input')) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); rotate(70); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); rotate(-70); }
+  });
+
+  /* ----- site na tela ----- */
+  var widthIdx = 2, currentUrl = '';
+  function applyWidth(){
+    var w = WIDTHS[widthIdx], s = screenEl.clientWidth / w;
+    frame.style.width = w+'px'; frame.style.height = FRAME_H+'px';
+    frame.style.transform = 'scale('+s+')';
+    site.style.height = Math.round(FRAME_H*s)+'px';
+    home.style.zoom = (360/w).toFixed(3);
+    $('zoomOut').textContent = Math.round(360/w*100)+'%';
+    $('narrower').disabled = widthIdx===0; $('wider').disabled = widthIdx===WIDTHS.length-1;
+  }
+  $('narrower').addEventListener('click', function(){ if(widthIdx>0){widthIdx--; applyWidth();} });
+  $('wider').addEventListener('click', function(){ if(widthIdx<WIDTHS.length-1){widthIdx++; applyWidth();} });
+
+  /* ----- formato ----- */
+  function setShape(round){
+    watch.classList.toggle('round', round);
+    $('shapeRound').setAttribute('aria-pressed', round); $('shapeSquare').setAttribute('aria-pressed', !round);
+    applyWidth(); fit();
+    try{ localStorage.setItem('watch-shape', round?'round':'square'); }catch(_){}
+  }
+  $('shapeRound').addEventListener('click', function(){ setShape(true); });
+  $('shapeSquare').addEventListener('click', function(){ setShape(false); });
+  var saved='square'; try{ saved = localStorage.getItem('watch-shape') || 'square'; }catch(_){}
+  setShape(saved==='round');
+
+  function normalize(raw){
+    raw = (raw||'').trim(); if(!raw) return null;
+    if(!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = 'https://'+raw;
+    try{ var u = new URL(raw); return (u.protocol==='http:'||u.protocol==='https:') && u.hostname.indexOf('.')>0 ? u.href : null; }
+    catch(_){ return null; }
+  }
+  var msg=$('msg'), notice=$('notice'), framed=false;
+  try{ framed = window.self !== window.top; }catch(_){ framed = true; }
+  function blocked(){
+    loading.classList.remove('on'); msg.textContent='Este ambiente bloqueia sites externos. Abra o arquivo direto no Chrome ou Safari.'; msg.classList.add('on');
+  }
+  if(framed){ notice.hidden=false; notice.textContent='Pré-visualização: para carregar sites, baixe o arquivo e abra direto no navegador.'; }
+  document.addEventListener('securitypolicyviolation', function(e){
+    if(/frame-src|child-src|default-src/.test(e.effectiveDirective||e.violatedDirective||'') && currentUrl) blocked();
+  });
+  var loadTimer=0;
+  function openSite(raw){
+    var url = normalize(raw);
+    urlInput.classList.toggle('err', !url);
+    if(!url){ urlInput.focus(); return; }
+    currentUrl = url; urlInput.value = url;
+    home.style.display='none'; site.style.display='block'; resetScroll();
+    msg.classList.remove('on'); loading.classList.add('on'); frame.src = url;
+    clearTimeout(loadTimer); loadTimer = setTimeout(function(){ loading.classList.remove('on'); }, 12000);
+  }
+  function goHome(){
+    currentUrl=''; msg.classList.remove('on'); frame.removeAttribute('src'); loading.classList.remove('on'); clearTimeout(loadTimer);
+    site.style.display='none'; home.style.display='flex'; resetScroll();
+    urlInput.value=''; urlInput.classList.remove('err');
+  }
+  frame.addEventListener('load', function(){ loading.classList.remove('on'); });
+  urlInput.addEventListener('input', function(){ urlInput.classList.remove('err'); });
+  $('sideBtn').addEventListener('click', function(){ if(currentUrl) openSite(currentUrl); });
+  $('form').addEventListener('submit', function(e){ e.preventDefault(); openSite(urlInput.value); });
+
+  SHORTCUTS.forEach(function(s){
+    var b=document.createElement('button'); b.className='tile'; b.type='button';
+    var i=document.createElement('span'); i.textContent=s.name.charAt(0);
+    var st=document.createElement('strong'); st.textContent=s.name;
+    b.appendChild(i); b.appendChild(st);
+    b.addEventListener('click', function(){ openSite(s.url); });
+    $('tiles').appendChild(b);
+  });
+
+  /* ----- relógio ----- */
+  var dateFmt = new Intl.DateTimeFormat('pt-BR',{weekday:'long',day:'numeric',month:'long'});
+  function two(n){return (n<10?'0':'')+n}
+  function clock(){
+    var d=new Date();
+    $('clock').innerHTML = two(d.getHours())+'<b>:</b>'+two(d.getMinutes());
+    $('date').textContent = dateFmt.format(d);
+    $('secs').style.width = (d.getSeconds()/59*100)+'%';
+  }
+  clock(); setInterval(clock, 1000);
+})();
+</script>
+</body>
+</html>
